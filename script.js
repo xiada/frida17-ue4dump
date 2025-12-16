@@ -1,3 +1,5 @@
+// index.d.ts
+/// <reference path="../index.d.ts" />
 var moduleBase;
 var appId;
 var GUObjectArray;
@@ -19,10 +21,11 @@ var processEventFilterOutRegex;
 
 var O_RDONLY = 0;
 var SEEK_SET = 0;
-var open = new NativeFunction(Module.findExportByName(null, "open"), "int", ["pointer", "int", "int"])
-var close = new NativeFunction(Module.findExportByName(null, "close"), "int", ["int"]);
-var lseek = new NativeFunction(Module.findExportByName(null, "lseek"), "int", ["int", "int", "int"]);
-var read = new NativeFunction(Module.findExportByName(null, "read"), "int", ["int", "pointer", "int"]);
+var libc = Process.getModuleByName("libc.so");
+var open = new NativeFunction(libc.findExportByName("open"), "int", ["pointer", "int", "int"])
+var close = new NativeFunction(libc.findExportByName("close"), "int", ["int"]);
+var lseek = new NativeFunction(libc.findExportByName("lseek"), "int", ["int", "int", "int"]);
+var read = new NativeFunction(libc.findExportByName("read"), "int", ["int", "pointer", "int"]);
 
 // Global
 var FUObjectItemPadd = 0x0;
@@ -1076,7 +1079,8 @@ function scanMemoryForGUObjectArray(scanStart, scanSize, mempattern) {
 
 // Find GName
 function findGName(moduleName) {
-    var addr = Module.findExportByName(moduleName, "_Zeq12FNameEntryId5EName");
+    var module = Process.findModuleByName(moduleName);
+    var addr = module.findExportByName( "_Zeq12FNameEntryId5EName");
     if (addr === null) {
         console.log(`[!] Cannot find GName`);
         console.log(`[*] Try to search GName on memory`);
@@ -1157,7 +1161,7 @@ function findGName(moduleName) {
 
 // Find GUObjectArray
 function findGUObjectArray(moduleName) {
-    GUObjectArray = Module.findExportByName(moduleName, "GUObjectArray");
+    GUObjectArray = Process.findModuleByName(moduleName).findExportByName("GUObjectArray");
     if (GUObjectArray === null && platform === 'darwin') {
         console.log(`[!] Cannot find GUObjectArray`);
         console.log(`[*] Try to search GUObjectArray on memory`);
@@ -1313,7 +1317,16 @@ function findUEVersion(moduleName) {
     var scanStart = null;
     var scanSize = null;
     if (Process.platform === 'linux') {
-        var bss = Module.enumerateSectionsSync(moduleName).filter(m => m.name === '.bss')[0];
+        const sections = module.enumerateSections();
+        var bss = null;
+
+        // 2. 使用 for...of 循环迭代并查找
+        for (const section of sections) {
+            if (section.name === '.bss') {
+                bss = section;
+                break; // 找到即停止，效率更高
+            }
+        }
         scanStart = bss.address;
         scanSize = bss.size;
     }
@@ -1425,7 +1438,7 @@ function hookProcessEvent() {
 }
 
 function set(moduleName) {
-    moduleBase = Module.findBaseAddress(moduleName);
+    moduleBase = Process.findModuleByName(moduleName).base;
     appId = findAppId();
     findUEVersion(moduleName);
     findGUObjectArray(moduleName);
