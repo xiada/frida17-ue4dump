@@ -978,6 +978,7 @@ function dumpObjects() {
 }
 
 function dumpSdk() {
+    console.log(`Dumping SDK...`);
     if (GUObjectArray === undefined) {
         console.log(`Do set(<moduleName>) first`);
         return;
@@ -1207,7 +1208,7 @@ function findGUObjectArray(moduleName) {
         console.log(`[*] Try to search GUObjectArray on memory`);
         var module = Process.findModuleByName(moduleName);
         var pattern = null;
-        if (appId === 'com.proximabeta.mf.uamo' || appId === 'com.tencent.mf.uam' || appId === "com.netease.ma100asia" || appId === "com.netease.dbdena" || appId === 'com.netease.octopath.kr' || appId === 'com.vic.bc.kr' || appId === 'com.vic.bc.jp' || appId === "com.perfect.tof.gp" || appId === 'com.netmarble.arthdal' || appId === 'com.miraclegames.farlight84') {
+        if (appId === 'com.proximabeta.mf.uamo' || appId === 'com.tencent.mf.uam' || appId === "com.netease.ma100asia" || appId === "com.netease.dbdena" || appId === 'com.netease.octopath.kr'  || appId === 'com.vic.bc.kr' || appId === 'com.vic.bc.jp' || appId === "com.perfect.tof.gp" || appId === 'com.netmarble.arthdal' || appId === 'com.miraclegames.farlight84') {
             /* Arena Breakout, Dead by Daylight, Octopath, Black Clover, Tower of Fantasy, Arthdal Chronicles, farlight84 pattern */
             pattern = "?1 ?? ff ?0 ?? ?? ?? ?1 ?? ?? ?3 ?1 ?? ?? ?? 9? ?0 ?? ?? ?0 00 ?? ?? f9"
         } else if (appId === "com.wemade.nightcrows" || appId === 'com.GreenGoGames.RooftopPrakourFreerun') {
@@ -1238,6 +1239,7 @@ function findGUObjectArray(moduleName) {
                     }
 
                     try {
+                        console.log(`[*] adrp: ${adrp}, ldr: ${ldr}`);
                         var GUObjectArray_ptr = ptr(adrp).add(ptr(ldr));
                         console.log(`[*] GUObjectArray_ptr: ${GUObjectArray_ptr}`);
                         GUObjectArray = ptr(GUObjectArray_ptr).readPointer();
@@ -1263,6 +1265,23 @@ function findGUObjectArray(moduleName) {
                         console.log(`[!] ${e.stack}`);
                         GUObjectArray = undefined;
                     }
+                } else if ( pattern === "e1 ?? 40 b9 e2 ?? 40 b9 e3 ?? 40 39") {
+                    var adrp, ldr;
+                    let disasm = Instruction.parse(GUObjectArrayPatternFoundAddr.sub(0x4));
+                    adrp = disasm.operands.find(op => op.type === 'imm')?.value;
+                    
+                    disasm = Instruction.parse(GUObjectArrayPatternFoundAddr.add(0xc));
+                    ldr = disasm.operands.find(op => op.type === 'mem')?.value.disp;
+                    
+                    try {
+                        var GUObjectArray_ptr = ptr(adrp).add(ptr(ldr));
+                        console.log(`[*] GUObjectArray_ptr: ${GUObjectArray_ptr}`);
+                        GUObjectArray = ptr(GUObjectArray_ptr).readPointer();
+                        console.log(`[*] Got GUObjectArray: ${GUObjectArray}`);
+                    } catch (e) {
+                        console.log(`[!] ${e.stack}`);
+                        GUObjectArray = undefined;
+                    }
                 } else {
                     var adrp, add;
                     let disasm = Instruction.parse(GUObjectArrayPatternFoundAddr.add(0xc));
@@ -1272,6 +1291,7 @@ function findGUObjectArray(moduleName) {
                     add = disasm.operands.find(op => op.type === 'imm')?.value;
                     
                     try {
+                        console.log(`[*] adrp: ${adrp}, add: ${add}`);
                         GUObjectArray = ptr(adrp).add(ptr(add));
                         console.log(`[*] Got GUObjectArray: ${GUObjectArray}`);
                     } catch (e) {
@@ -1464,4 +1484,57 @@ function set(moduleName) {
             return;
         }
     }, 0);
+}
+
+
+function dumpActorName(GWorld, GNames) 
+{
+    var Level = GWorld.add(offset_UWorld_PersistentLevel).readPointer()
+    console.log("Level :", Level)
+ 
+    var Actors = Level.add(offset_ULevel_AActors).readPointer()
+    console.log("Actors Array :", Actors)
+ 
+    var Actors_Num = Level.add(offset_ULevel_AActors).add(8).readU32()
+    console.log("Actors_num :", Actors_Num)
+ 
+    var Actors_Max = Level.add(offset_ULevel_AActors).add(0xc).readU32()
+    console.log("Actors_Max :", Actors_Max)
+ 
+ 
+    for (var index = 0; index < Actors_Num; index++) {
+        var actor = Actors.add(index * 8).readPointer()
+        if (actor == NULL) { continue; }
+        //console.log("actor", actor)
+        //通过角色actor获取其成员变量FName
+ 
+        var FNameEntryAllocator = GNames
+ 
+        var FName_Offset = 0x18
+        var FName = actor.add(FName_Offset);
+        var ComparisonIndex = FName.add(0).readU32()
+ 
+        // console.log("ComparisonIndex:", ComparisonIndex);
+        var FNameBlockOffsetBits = 16
+        var FNameBlockOffsets = 65536
+ 
+        var Block = ComparisonIndex >> FNameBlockOffsetBits
+        var Offset = ComparisonIndex & (FNameBlockOffsets - 1)
+ 
+        var Blocks_Offset = 0x40
+        var Blocks = FNameEntryAllocator.add(Blocks_Offset)
+ 
+        var FNameEntry = Blocks.add(Block * 8).readPointer().add(Offset * 2)
+        // console.log("FNameEntry:", FNameEntry)
+ 
+        var FNameEntryHeader = FNameEntry.readU16()
+ 
+ 
+        var isWide = FNameEntryHeader & 1
+        var Len = FNameEntryHeader >> 6
+ 
+        if (0 == isWide) {
+            console.log(`\x1b[32m[+] actor ${actor}: ${FNameEntry.add(2).readCString(Len)}\x1b[0m`)
+        }
+    }
 }
